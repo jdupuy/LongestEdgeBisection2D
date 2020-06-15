@@ -1,0 +1,12 @@
+[submodule "submodules/libcbt"]
+	path = submodules/libcbt
+	url = https://github.com/jdupuy/libcbt.git
+[submodule "submodules/glfw"]
+	path = submodules/glfw
+	url = https://github.com/glfw/glfw.git
+[submodule "submodules/imgui"]
+	path = submodules/imgui
+	url = https://github.com/ocornut/imgui.git
+[submodule "submodules/dj_opengl"]
+	path = submodules/dj_opengl
+	url = https://github.com/jdupuy/dj_opengl.git
