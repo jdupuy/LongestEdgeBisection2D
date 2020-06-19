@@ -30,7 +30,7 @@ struct Window {
     GLFWwindow* handle;
 } g_window = {
     "Longest Edge Bisection",
-    512, 512,
+    720, 720,
     {4, 5},
     NULL
 };
@@ -596,6 +596,9 @@ void DrawLeb()
     glEnable(GL_CULL_FACE);
     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, g_gl.buffers[BUFFER_LEB_DISPATCHER]);
     glUseProgram(g_gl.programs[PROGRAM_TRIANGLES]);
+    glUniform2f(glGetUniformLocation(g_gl.programs[PROGRAM_TRIANGLES],
+                                     "u_ScreenResolution"),
+                g_window.width, g_window.height);
     glBindVertexArray(g_gl.vertexarrays[VERTEXARRAY_EMPTY]);
         glDrawArraysIndirect(GL_TRIANGLES, 0);
     glBindVertexArray(0);
@@ -671,6 +674,14 @@ void DrawGui()
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
+
+void resizeCallback(GLFWwindow* window, int width, int height)
+{
+    g_window.width = width;
+    g_window.height = height;
+}
+
+
 int main(int argc, char **argv)
 {
     LOG("Loading {OpenGL Window}");
@@ -694,8 +705,7 @@ int main(int argc, char **argv)
     glfwMakeContextCurrent(g_window.handle);
 
     // setup callbacks
-    //glfwSetCursorPosCallback(window.handle, CursorPositionCallback);
-    //glfwSetMouseButtonCallback(window.handle, MouseButtonCallback);
+    glfwSetWindowSizeCallback(g_window.handle, &resizeCallback);
 
     // load OpenGL functions
     LOG("Loading {OpenGL Functions}");
