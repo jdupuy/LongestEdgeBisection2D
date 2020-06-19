@@ -15,9 +15,6 @@
 #define DJ_OPENGL_IMPLEMENTATION
 #include "dj_opengl.h"
 
-//#define LEB_IMPLEMENTATION
-//#include "leb.h"
-
 #define CBT_INIT_MAX_DEPTH 1
 
 #ifndef PATH_TO_SRC_DIRECTORY
@@ -38,25 +35,24 @@ struct Window {
     NULL
 };
 
-#define CBT_MAX_DEPTH 10
+#define CBT_MAX_DEPTH 20
 enum {MODE_TRIANGLE, MODE_SQUARE};
-enum {BACKEND_CPU, BACKEND_GPU};
 struct LongestEdgeBisection {
     cbt_Tree *cbt;
     struct {
         int mode;
-        int backend;
         struct {
             float x, y;
         } target;
     } params;
+    int32_t triangleCount;
 } g_leb = {
     cbt_CreateAtDepth(CBT_MAX_DEPTH, CBT_INIT_MAX_DEPTH),
     {
         MODE_TRIANGLE,
-        BACKEND_CPU,
         {0.49951f, 0.41204f}
-    }
+    },
+    0
 };
 #undef CBT_MAX_DEPTH
 
@@ -72,16 +68,36 @@ enum {
 
     PROGRAM_COUNT
 };
-enum {VERTEXARRAY_EMPTY, VERTEXARRAY_COUNT};
-enum {BUFFER_CBT, BUFFER_CBT_DISPATCHER, BUFFER_LEB_DISPATCHER, BUFFER_COUNT};
+enum {
+    BUFFER_CBT,
+    BUFFER_CBT_DISPATCHER,
+    BUFFER_LEB_DISPATCHER,
+    BUFFER_TRIANGLE_COUNT,
+
+    BUFFER_COUNT
+};
+enum {
+    VERTEXARRAY_EMPTY,
+
+    VERTEXARRAY_COUNT
+};
+enum {
+    CLOCK_DISPATCHER,
+    CLOCK_SUBDIVISION,
+    CLOCK_SUM_REDUCTION,
+
+    CLOCK_COUNT
+};
 struct OpenGL {
     GLuint programs[PROGRAM_COUNT];
     GLuint vertexarrays[VERTEXARRAY_COUNT];
     GLuint buffers[BUFFER_COUNT];
+    djg_clock *clocks[CLOCK_COUNT];
 } g_gl = {
     {0},
     {0},
-    {0}
+    {0},
+    {NULL}
 };
 
 #define PATH_TO_SHADER_DIRECTORY PATH_TO_SRC_DIRECTORY "shaders/"
@@ -300,6 +316,21 @@ bool LoadVertexArrays()
     return success;
 }
 
+bool LoadTriangleCountBuffer()
+{
+    GLuint *buffer = &g_gl.buffers[BUFFER_TRIANGLE_COUNT];
+
+    glGenBuffers(1, buffer);
+    glBindBuffer(GL_ARRAY_BUFFER, *buffer);
+    glBufferStorage(GL_ARRAY_BUFFER,
+                    sizeof(int32_t),
+                    NULL,
+                    GL_MAP_READ_BIT);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    return glGetError() == GL_NO_ERROR;
+}
+
 bool LoadCbtBuffer()
 {
     GLuint *buffer = &g_gl.buffers[BUFFER_CBT];
@@ -360,6 +391,7 @@ bool LoadBuffers()
     if (success) success = LoadCbtBuffer();
     if (success) success = LoadCbtDispatcherBuffer();
     if (success) success = LoadLebDispatcherBuffer();
+    if (success) success = LoadTriangleCountBuffer();
 
     return success;
 }
@@ -418,6 +450,9 @@ bool Load()
     glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
     glDebugMessageCallback(&DebugOutputLogger, NULL);
 
+    for (int i = 0; i < CLOCK_COUNT; ++i)
+        g_gl.clocks[i] = djgc_create();
+
     if (success) success = LoadPrograms();
     if (success) success = LoadVertexArrays();
     if (success) success = LoadBuffers();
@@ -425,6 +460,16 @@ bool Load()
     return success;
 }
 
+void Release()
+{
+    glDeleteBuffers(BUFFER_COUNT, g_gl.buffers);
+    glDeleteVertexArrays(VERTEXARRAY_COUNT, g_gl.vertexarrays);
+
+    for (int i = 0; i < CLOCK_COUNT; ++i)
+        djgc_release(g_gl.clocks[i]);
+    for (int i = 0; i < PROGRAM_COUNT; ++i)
+        glDeleteProgram(g_gl.programs[i]);
+}
 
 void ReductionKernel()
 {
@@ -512,9 +557,17 @@ void ReleaseGui()
 
 void UpdateSubdivision()
 {
+    djgc_start(g_gl.clocks[CLOCK_DISPATCHER]);
     DispatcherKernel();
+    djgc_stop(g_gl.clocks[CLOCK_DISPATCHER]);
+
+    djgc_start(g_gl.clocks[CLOCK_SUBDIVISION]);
     SubdivisionKernel();
+    djgc_stop(g_gl.clocks[CLOCK_SUBDIVISION]);
+
+    djgc_start(g_gl.clocks[CLOCK_SUM_REDUCTION]);
     ReductionKernel();
+    djgc_stop(g_gl.clocks[CLOCK_SUM_REDUCTION]);
 }
 
 void DrawTarget()
@@ -548,6 +601,18 @@ void DrawLeb()
     glBindVertexArray(0);
     glUseProgram(0);
     glDisable(GL_CULL_FACE);
+
+    // retrieve triangle count
+    glCopyNamedBufferSubData(g_gl.buffers[BUFFER_LEB_DISPATCHER],
+                             g_gl.buffers[BUFFER_TRIANGLE_COUNT],
+                             sizeof(int32_t),
+                             0,
+                             sizeof(int32_t));
+    g_leb.triangleCount = *(int *)glMapNamedBuffer(
+        g_gl.buffers[BUFFER_TRIANGLE_COUNT],
+        GL_READ_ONLY
+    );
+    glUnmapNamedBuffer(g_gl.buffers[BUFFER_TRIANGLE_COUNT]);
 }
 
 void Draw()
@@ -568,20 +633,17 @@ void DrawGui()
     ImGui::Begin("Window");
     {
         const char* eModes[] = {"Triangle", "Square"};
-        const char* eBackend[] = {"CPU", "GPU"};
         int32_t cbtByteSize = cbt_HeapByteSize(g_leb.cbt);
         int32_t maxDepth = cbt_MaxDepth(g_leb.cbt);
+        double cpuDt, gpuDt;
 
         if (ImGui::Combo("Mode", &g_leb.params.mode, &eModes[0], 2)) {
             cbt_ResetToDepth(g_leb.cbt, CBT_INIT_MAX_DEPTH);
             LoadCbtBuffer();
             LoadPrograms();
         }
-        if (ImGui::Combo("Backend", &g_leb.params.backend, &eBackend[0], 2)) {
-
-        }
-        ImGui::SliderFloat("TargetX", &g_leb.params.target.x, 0, 1);
-        ImGui::SliderFloat("TargetY", &g_leb.params.target.y, 0, 1);
+        ImGui::SliderFloat("TargetX", &g_leb.params.target.x, -0.1, 1.1);
+        ImGui::SliderFloat("TargetY", &g_leb.params.target.y, -0.1, 1.1);
         if (ImGui::SliderInt("MaxDepth", &maxDepth, 6, 30)) {
             cbt_Release(g_leb.cbt);
             g_leb.cbt = cbt_CreateAtDepth(maxDepth, CBT_INIT_MAX_DEPTH);
@@ -596,7 +658,13 @@ void DrawGui()
         ImGui::Text("Mem Usage: %u %s",
                     cbtByteSize >= (1 << 20) ? (cbtByteSize >> 20) : (cbtByteSize >= (1 << 10) ? cbtByteSize >> 10 : cbtByteSize),
                     cbtByteSize >= (1 << 20) ? "MiB" : (cbtByteSize > (1 << 10) ? "KiB" : "B"));
-        ImGui::Text("Nodes: %lu", cbt_NodeCount(g_leb.cbt));
+        ImGui::Text("Nodes: %i", g_leb.triangleCount);
+        djgc_ticks(g_gl.clocks[CLOCK_DISPATCHER], &cpuDt, &gpuDt);
+        ImGui::Text("Dispatcher  : %.3f (CPU) %.3f (GPU)", cpuDt * 1e3, gpuDt * 1e3);
+        djgc_ticks(g_gl.clocks[CLOCK_SUBDIVISION], &cpuDt, &gpuDt);
+        ImGui::Text("Subdivision : %.3f (CPU) %.3f (GPU)", cpuDt * 1e3, gpuDt * 1e3);
+        djgc_ticks(g_gl.clocks[CLOCK_SUM_REDUCTION], &cpuDt, &gpuDt);
+        ImGui::Text("SumReduction: %.3f (CPU) %.3f (GPU)", cpuDt * 1e3, gpuDt * 1e3);
     }
     ImGui::End();
     ImGui::Render();
@@ -656,6 +724,7 @@ int main(int argc, char **argv)
         glfwSwapBuffers(g_window.handle);
     }
 
+    Release();
     cbt_Release(g_leb.cbt);
     ReleaseGui();
     glfwTerminate();

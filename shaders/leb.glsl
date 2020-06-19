@@ -266,8 +266,8 @@ leb__HasDiamondParent(
     const int cbtID,
     in const leb_DiamondParent diamondParent
 ) {
-    bool canMergeBase = cbt_HeapRead(cbtID, diamondParent.base) == 2u;
-    bool canMergeTop  = cbt_HeapRead(cbtID, diamondParent.top) == 2u;
+    bool canMergeBase = cbt_HeapRead(cbtID, diamondParent.base) <= 2u;
+    bool canMergeTop  = cbt_HeapRead(cbtID, diamondParent.top) <= 2u;
 
     return canMergeBase && canMergeTop;
 }
@@ -297,7 +297,7 @@ leb_MergeNode_Square(
     in const cbt_Node node,
     in const leb_DiamondParent diamondParent
 ) {
-    if ((node.depth >= 1) && leb__HasDiamondParent(cbtID, diamondParent)) {
+    if ((node.depth > 1) && leb__HasDiamondParent(cbtID, diamondParent)) {
         cbt_MergeNode(cbtID, node);
     }
 }
