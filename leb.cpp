@@ -94,7 +94,8 @@ enum {
 };
 enum {
     CLOCK_DISPATCHER,
-    CLOCK_SUBDIVISION,
+    CLOCK_SUBDIVISION_SPLIT,
+    CLOCK_SUBDIVISION_MERGE,
     CLOCK_SUM_REDUCTION,
 
     CLOCK_COUNT
@@ -263,7 +264,6 @@ bool LoadSubdivisionPrograms()
 {
     return LoadSubdivisionMergeProgram() && LoadSubdivisionSplitProgram();
 }
-
 
 bool LoadTrianglesProgram()
 {
@@ -544,9 +544,8 @@ void DispatcherKernel()
     glUseProgram(0);
 }
 
-void SubdivisionKernel()
+void SubdivisionKernel(int pingPong)
 {
-    static int pingPong = 0;
     const GLuint *program = &g_gl.programs[PROGRAM_LEB_SPLIT + pingPong];
 
     glUseProgram(*program);
@@ -557,8 +556,6 @@ void SubdivisionKernel()
     glDispatchComputeIndirect(0);
     glMemoryBarrier(GL_ALL_BARRIER_BITS);
     glUseProgram(0);
-
-    pingPong = 1 - pingPong;
 }
 
 void LebDispatcherKernel()
@@ -590,19 +587,125 @@ void ReleaseGui()
     ImGui::DestroyContext();
 }
 
+float Wedge(const float *a, const float *b)
+{
+    return a[0] * b[1] - a[1] * b[0];
+}
+
+bool IsInside(const float faceVertices[][3])
+{
+    float target[2] = {g_leb.params.target.x, g_leb.params.target.y};
+    float v1[2] = {faceVertices[0][0], faceVertices[1][0]};
+    float v2[2] = {faceVertices[0][1], faceVertices[1][1]};
+    float v3[2] = {faceVertices[0][2], faceVertices[1][2]};
+    float x1[2] = {v2[0] - v1[0], v2[1] - v1[1]};
+    float x2[2] = {v3[0] - v2[0], v3[1] - v2[1]};
+    float x3[2] = {v1[0] - v3[0], v1[1] - v3[1]};
+    float y1[2] = {target[0] - v1[0], target[1] - v1[1]};
+    float y2[2] = {target[0] - v2[0], target[1] - v2[1]};
+    float y3[2] = {target[0] - v3[0], target[1] - v3[1]};
+    float w1 = Wedge(x1, y1);
+    float w2 = Wedge(x2, y2);
+    float w3 = Wedge(x3, y3);
+
+    return (w1 >= 0.0f) && (w2 >= 0.0f) && (w3 >= 0.0f);
+}
+
+void
+UpdateSubdivisionCpuCallback_Split(
+    cbt_Tree *cbt,
+    const cbt_Node node,
+    const void *userData
+) {
+    (void)userData;
+    float faceVertices[][3] = {
+        {0.0f, 0.0f, 1.0f},
+        {1.0f, 0.0f, 0.0f}
+    };
+
+    if (g_leb.params.mode == MODE_TRIANGLE) {
+        leb_DecodeNodeAttributeArray(node, 2, faceVertices);
+
+        if (IsInside(faceVertices)) {
+            leb_SplitNode(cbt, node);
+        }
+    } else {
+        leb_DecodeNodeAttributeArray_Square(node, 2, faceVertices);
+
+        if (IsInside(faceVertices)) {
+            leb_SplitNode_Square(cbt, node);
+        }
+    }
+}
+
+void
+UpdateSubdivisionCpuCallback_Merge(
+    cbt_Tree *cbt,
+    const cbt_Node node,
+    const void *userData
+) {
+    (void)userData;
+    float baseFaceVertices[][3] = {
+        {0.0f, 0.0f, 1.0f},
+        {1.0f, 0.0f, 0.0f}
+    };
+    float topFaceVertices[][3] = {
+        {0.0f, 0.0f, 1.0f},
+        {1.0f, 0.0f, 0.0f}
+    };
+
+    if (g_leb.params.mode == MODE_TRIANGLE) {
+        leb_DiamondParent diamondParent = leb_DecodeDiamondParent(node);
+
+        leb_DecodeNodeAttributeArray(diamondParent.base, 2, baseFaceVertices);
+        leb_DecodeNodeAttributeArray(diamondParent.top, 2, topFaceVertices);
+
+        if (!IsInside(baseFaceVertices) && !IsInside(topFaceVertices)) {
+            leb_MergeNode(cbt, node, diamondParent);
+        }
+    } else {
+        leb_DiamondParent diamondParent = leb_DecodeDiamondParent(node);
+
+        leb_DecodeNodeAttributeArray_Square(diamondParent.base, 2, baseFaceVertices);
+        leb_DecodeNodeAttributeArray_Square(diamondParent.top, 2, topFaceVertices);
+
+        if (!IsInside(baseFaceVertices) && !IsInside(topFaceVertices)) {
+            leb_MergeNode_Square(cbt, node, diamondParent);
+        }
+    }
+}
+
 void UpdateSubdivision()
 {
-    djgc_start(g_gl.clocks[CLOCK_DISPATCHER]);
-    DispatcherKernel();
-    djgc_stop(g_gl.clocks[CLOCK_DISPATCHER]);
+    static int pingPong = 0;
 
-    djgc_start(g_gl.clocks[CLOCK_SUBDIVISION]);
-    SubdivisionKernel();
-    djgc_stop(g_gl.clocks[CLOCK_SUBDIVISION]);
+    if (g_leb.params.backend == BACKEND_CPU) {
 
-    djgc_start(g_gl.clocks[CLOCK_SUM_REDUCTION]);
-    ReductionKernel();
-    djgc_stop(g_gl.clocks[CLOCK_SUM_REDUCTION]);
+        djgc_start(g_gl.clocks[CLOCK_SUBDIVISION_SPLIT + pingPong]);
+        if (pingPong == 0) {
+            cbt_Update(g_leb.cbt, &UpdateSubdivisionCpuCallback_Split, NULL);
+        } else {
+            cbt_Update(g_leb.cbt, &UpdateSubdivisionCpuCallback_Merge, NULL);
+        }
+        djgc_stop(g_gl.clocks[CLOCK_SUBDIVISION_SPLIT + pingPong]);
+
+        LoadCbtBuffer();
+
+    } else {
+        djgc_start(g_gl.clocks[CLOCK_DISPATCHER]);
+        DispatcherKernel();
+        djgc_stop(g_gl.clocks[CLOCK_DISPATCHER]);
+
+        djgc_start(g_gl.clocks[CLOCK_SUBDIVISION_SPLIT + pingPong]);
+        SubdivisionKernel(pingPong);
+        djgc_stop(g_gl.clocks[CLOCK_SUBDIVISION_SPLIT + pingPong]);
+
+        djgc_start(g_gl.clocks[CLOCK_SUM_REDUCTION]);
+        ReductionKernel();
+        djgc_stop(g_gl.clocks[CLOCK_SUM_REDUCTION]);
+    }
+
+    pingPong = 1 - pingPong;
 }
 
 void DrawTarget()
@@ -630,7 +733,8 @@ void RetrieveNodeCount()
     if (isReady) {
         GLuint *buffer = &g_gl.buffers[BUFFER_TRIANGLE_COUNT];
 
-        g_leb.triangleCount = *(int *)glMapNamedBuffer(*buffer, GL_READ_ONLY);
+        g_leb.triangleCount = *(int *)
+            glMapNamedBuffer(*buffer, GL_READ_ONLY | GL_MAP_UNSYNCHRONIZED_BIT);
         glUnmapNamedBuffer(g_gl.buffers[BUFFER_TRIANGLE_COUNT]);
         glCopyNamedBufferSubData(g_gl.buffers[BUFFER_LEB_DISPATCHER],
                                  g_gl.buffers[BUFFER_TRIANGLE_COUNT],
@@ -682,6 +786,7 @@ void DrawGui()
     ImGui::Begin("Window");
     {
         const char* eModes[] = {"Triangle", "Square"};
+        const char* eBackends[] = {"CPU", "GPU"};
         int32_t cbtByteSize = cbt_HeapByteSize(g_leb.cbt);
         int32_t maxDepth = cbt_MaxDepth(g_leb.cbt);
         double cpuDt, gpuDt;
@@ -690,6 +795,10 @@ void DrawGui()
             cbt_ResetToDepth(g_leb.cbt, CBT_INIT_MAX_DEPTH);
             LoadCbtBuffer();
             LoadPrograms();
+        }
+        if (ImGui::Combo("Backend", &g_leb.params.backend, &eBackends[0], 2)) {
+            cbt_ResetToDepth(g_leb.cbt, CBT_INIT_MAX_DEPTH);
+            LoadCbtBuffer();
         }
         ImGui::SliderFloat("TargetX", &g_leb.params.target.x, -0.1, 1.1);
         ImGui::SliderFloat("TargetY", &g_leb.params.target.y, -0.1, 1.1);
@@ -704,16 +813,26 @@ void DrawGui()
             LoadCbtBuffer();
         }
         ImGui::Separator();
+        ImGui::Text("Nodes: %i", g_leb.triangleCount);
         ImGui::Text("Mem Usage: %u %s",
                     cbtByteSize >= (1 << 20) ? (cbtByteSize >> 20) : (cbtByteSize >= (1 << 10) ? cbtByteSize >> 10 : cbtByteSize),
                     cbtByteSize >= (1 << 20) ? "MiB" : (cbtByteSize > (1 << 10) ? "KiB" : "B"));
-        ImGui::Text("Nodes: %i", g_leb.triangleCount);
-        djgc_ticks(g_gl.clocks[CLOCK_DISPATCHER], &cpuDt, &gpuDt);
-        ImGui::Text("Dispatcher  : %.3f (CPU) %.3f (GPU)", cpuDt * 1e3, gpuDt * 1e3);
-        djgc_ticks(g_gl.clocks[CLOCK_SUBDIVISION], &cpuDt, &gpuDt);
-        ImGui::Text("Subdivision : %.3f (CPU) %.3f (GPU)", cpuDt * 1e3, gpuDt * 1e3);
-        djgc_ticks(g_gl.clocks[CLOCK_SUM_REDUCTION], &cpuDt, &gpuDt);
-        ImGui::Text("SumReduction: %.3f (CPU) %.3f (GPU)", cpuDt * 1e3, gpuDt * 1e3);
+        ImGui::Text("Timings (ms)");
+        if (g_leb.params.backend == BACKEND_CPU) {
+            djgc_ticks(g_gl.clocks[CLOCK_SUBDIVISION_SPLIT], &cpuDt, &gpuDt);
+            ImGui::Text("Subdivision (Split): %.3f", cpuDt * 1e3);
+            djgc_ticks(g_gl.clocks[CLOCK_SUBDIVISION_MERGE], &cpuDt, &gpuDt);
+            ImGui::Text("Subdivision (Merge): %.3f", cpuDt * 1e3);
+        } else {
+            djgc_ticks(g_gl.clocks[CLOCK_DISPATCHER], &cpuDt, &gpuDt);
+            ImGui::Text("Dispatcher  :        %.3f (CPU) %.3f (GPU)", cpuDt * 1e3, gpuDt * 1e3);
+            djgc_ticks(g_gl.clocks[CLOCK_SUBDIVISION_SPLIT], &cpuDt, &gpuDt);
+            ImGui::Text("Subdivision (Split): %.3f (CPU) %.3f (GPU)", cpuDt * 1e3, gpuDt * 1e3);
+            djgc_ticks(g_gl.clocks[CLOCK_SUBDIVISION_MERGE], &cpuDt, &gpuDt);
+            ImGui::Text("Subdivision (Merge): %.3f (CPU) %.3f (GPU)", cpuDt * 1e3, gpuDt * 1e3);
+            djgc_ticks(g_gl.clocks[CLOCK_SUM_REDUCTION], &cpuDt, &gpuDt);
+            ImGui::Text("SumReduction:        %.3f (CPU) %.3f (GPU)", cpuDt * 1e3, gpuDt * 1e3);
+        }
     }
     ImGui::End();
     ImGui::Render();
