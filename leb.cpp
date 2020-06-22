@@ -12,6 +12,9 @@
 #define CBT_IMPLEMENTATION
 #include "cbt.h"
 
+#define LEB_IMPLEMENTATION
+#include "leb.h"
+
 #define DJ_OPENGL_IMPLEMENTATION
 #include "dj_opengl.h"
 
@@ -37,10 +40,12 @@ struct Window {
 
 #define CBT_MAX_DEPTH 20
 enum {MODE_TRIANGLE, MODE_SQUARE};
+enum {BACKEND_CPU, BACKEND_GPU};
 struct LongestEdgeBisection {
     cbt_Tree *cbt;
     struct {
         int mode;
+        int backend;
         struct {
             float x, y;
         } target;
@@ -50,6 +55,7 @@ struct LongestEdgeBisection {
     cbt_CreateAtDepth(CBT_MAX_DEPTH, CBT_INIT_MAX_DEPTH),
     {
         MODE_TRIANGLE,
+        BACKEND_GPU,
         {0.49951f, 0.41204f}
     },
     0
@@ -102,6 +108,7 @@ struct OpenGL {
 
 #define PATH_TO_SHADER_DIRECTORY PATH_TO_SRC_DIRECTORY "shaders/"
 #define PATH_TO_CBT_DIRECTORY PATH_TO_SRC_DIRECTORY "submodules/libcbt/"
+#define PATH_TO_LEB_DIRECTORY PATH_TO_SRC_DIRECTORY "submodules/libleb/"
 
 bool LoadTargetProgram()
 {
@@ -221,7 +228,7 @@ bool LoadSubdivisionProgram(int programID, const char *flags)
     djgp_push_string(djgp, flags);
     djgp_push_string(djgp, "#define CBT_HEAP_BUFFER_BINDING %i\n", BUFFER_CBT);
     djgp_push_file(djgp, PATH_TO_CBT_DIRECTORY "glsl/cbt.glsl");
-    djgp_push_file(djgp, PATH_TO_SHADER_DIRECTORY "leb.glsl");
+    djgp_push_file(djgp, PATH_TO_LEB_DIRECTORY "glsl/leb.glsl");
     djgp_push_file(djgp, PATH_TO_SHADER_DIRECTORY "subdivision.glsl");
     djgp_push_string(djgp, "#ifdef COMPUTE_SHADER\n#endif");
     if (!djgp_to_gl(djgp, 450, false, true, glp)) {
@@ -264,7 +271,7 @@ bool LoadTrianglesProgram()
 
     djgp_push_string(djgp, "#define CBT_HEAP_BUFFER_BINDING %i\n", BUFFER_CBT);
     djgp_push_file(djgp, PATH_TO_CBT_DIRECTORY "glsl/cbt.glsl");
-    djgp_push_file(djgp, PATH_TO_SHADER_DIRECTORY "leb.glsl");
+    djgp_push_file(djgp, PATH_TO_LEB_DIRECTORY "glsl/leb.glsl");
     djgp_push_file(djgp, PATH_TO_SHADER_DIRECTORY "triangles.glsl");
     if (!djgp_to_gl(djgp, 450, false, true, glp)) {
         djgp_release(djgp);
@@ -293,6 +300,7 @@ bool LoadPrograms()
     return success;
 }
 
+#undef PATH_TO_LEB_DIRECTORY
 #undef PATH_TO_CBT_DIRECTORY
 #undef PATH_TO_SHADER_DIRECTORY
 
@@ -677,6 +685,8 @@ void DrawGui()
 
 void resizeCallback(GLFWwindow* window, int width, int height)
 {
+    (void)window;
+
     g_window.width = width;
     g_window.height = height;
 }

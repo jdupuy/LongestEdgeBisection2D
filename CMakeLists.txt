@@ -29,6 +29,7 @@ include_directories(submodules/glfw/include)
 include_directories(submodules/imgui)
 include_directories(submodules/dj_opengl)
 include_directories(submodules/libcbt)
+include_directories(submodules/libleb)
 
 # imgui source files
 set(IMGUI_SRC_DIR submodules/imgui)
