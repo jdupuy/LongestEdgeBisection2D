@@ -43,7 +43,7 @@ if(OPENMP_FOUND)
 endif()
 
 # ------------------------------------------------------------------------------
-set(DEMO ApiDebug)
+set(DEMO LongestEdgeBisection)
 set(SRC_FILES ./glad/glad.c imgui_impl.cpp leb.cpp)
 add_executable(${DEMO} ${IMGUI_SRC_FILES} ${SRC_FILES})
 target_link_libraries(${DEMO} glfw)
