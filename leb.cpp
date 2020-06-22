@@ -88,6 +88,11 @@ enum {
     VERTEXARRAY_COUNT
 };
 enum {
+    QUERY_NODE_COUNT,
+
+    QUERY_COUNT
+};
+enum {
     CLOCK_DISPATCHER,
     CLOCK_SUBDIVISION,
     CLOCK_SUM_REDUCTION,
@@ -98,8 +103,10 @@ struct OpenGL {
     GLuint programs[PROGRAM_COUNT];
     GLuint vertexarrays[VERTEXARRAY_COUNT];
     GLuint buffers[BUFFER_COUNT];
+    GLuint queries[QUERY_COUNT];
     djg_clock *clocks[CLOCK_COUNT];
 } g_gl = {
+    {0},
     {0},
     {0},
     {0},
@@ -404,6 +411,25 @@ bool LoadBuffers()
     return success;
 }
 
+bool LoadNodeCountQuery()
+{
+    GLuint *query = &g_gl.queries[QUERY_NODE_COUNT];
+
+    glGenQueries(1, query);
+    glQueryCounter(*query, GL_TIMESTAMP);
+
+    return glGetError() == GL_NO_ERROR;
+}
+
+bool LoadQueries()
+{
+    bool success = true;
+
+    if (success) success = LoadNodeCountQuery();
+
+    return success;
+}
+
 static void APIENTRY
 DebugOutputLogger(
     GLenum source,
@@ -464,6 +490,7 @@ bool Load()
     if (success) success = LoadPrograms();
     if (success) success = LoadVertexArrays();
     if (success) success = LoadBuffers();
+    if (success) success = LoadQueries();
 
     return success;
 }
@@ -593,6 +620,27 @@ void DrawTarget()
     glUseProgram(0);
 }
 
+void RetrieveNodeCount()
+{
+    static GLint isReady = GL_FALSE;
+    const GLuint *query = &g_gl.queries[QUERY_NODE_COUNT];
+
+    glGetQueryObjectiv(*query, GL_QUERY_RESULT_AVAILABLE, &isReady);
+
+    if (isReady) {
+        GLuint *buffer = &g_gl.buffers[BUFFER_TRIANGLE_COUNT];
+
+        g_leb.triangleCount = *(int *)glMapNamedBuffer(*buffer, GL_READ_ONLY);
+        glUnmapNamedBuffer(g_gl.buffers[BUFFER_TRIANGLE_COUNT]);
+        glCopyNamedBufferSubData(g_gl.buffers[BUFFER_LEB_DISPATCHER],
+                                 g_gl.buffers[BUFFER_TRIANGLE_COUNT],
+                                 sizeof(int32_t),
+                                 0,
+                                 sizeof(int32_t));
+        glQueryCounter(*query, GL_TIMESTAMP);
+    }
+}
+
 void DrawLeb()
 {
     // prepare indirect draw command
@@ -613,17 +661,7 @@ void DrawLeb()
     glUseProgram(0);
     glDisable(GL_CULL_FACE);
 
-    // retrieve triangle count
-    glCopyNamedBufferSubData(g_gl.buffers[BUFFER_LEB_DISPATCHER],
-                             g_gl.buffers[BUFFER_TRIANGLE_COUNT],
-                             sizeof(int32_t),
-                             0,
-                             sizeof(int32_t));
-    g_leb.triangleCount = *(int *)glMapNamedBuffer(
-        g_gl.buffers[BUFFER_TRIANGLE_COUNT],
-        GL_READ_ONLY
-    );
-    glUnmapNamedBuffer(g_gl.buffers[BUFFER_TRIANGLE_COUNT]);
+    RetrieveNodeCount();
 }
 
 void Draw()
