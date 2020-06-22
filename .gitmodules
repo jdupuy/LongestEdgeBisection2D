@@ -10,3 +10,6 @@
 [submodule "submodules/dj_opengl"]
 	path = submodules/dj_opengl
 	url = https://github.com/jdupuy/dj_opengl.git
+[submodule "submodules/libleb"]
+	path = submodules/libleb
+	url = https://github.com/jdupuy/libleb.git
