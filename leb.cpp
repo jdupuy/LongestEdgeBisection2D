@@ -664,7 +664,7 @@ UpdateSubdivisionCpuCallback_Merge(
             leb_MergeNode(cbt, node, diamondParent);
         }
     } else {
-        leb_DiamondParent diamondParent = leb_DecodeDiamondParent(node);
+        leb_DiamondParent diamondParent = leb_DecodeDiamondParent_Square(node);
 
         leb_DecodeNodeAttributeArray_Square(diamondParent.base, 2, baseFaceVertices);
         leb_DecodeNodeAttributeArray_Square(diamondParent.top, 2, topFaceVertices);
