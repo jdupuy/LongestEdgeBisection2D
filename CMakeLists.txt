@@ -50,6 +50,7 @@ target_link_libraries(${DEMO} glfw)
 target_compile_definitions(
     ${DEMO} PUBLIC
     -DPATH_TO_SRC_DIRECTORY="${CMAKE_SOURCE_DIR}/${SRC_DIR}/"
+    -DIMGUI_IMPL_OPENGL_LOADER_GLAD
 )
 unset(SRC_FILES)
 unset(DEMO)
