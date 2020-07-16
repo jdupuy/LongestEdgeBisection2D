@@ -13,3 +13,6 @@
 [submodule "submodules/libleb"]
 	path = submodules/libleb
 	url = https://github.com/jdupuy/libleb.git
+[submodule "submodules/stb"]
+	path = submodules/stb
+	url = https://github.com/nothings/stb.git
