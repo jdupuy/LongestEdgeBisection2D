@@ -3,7 +3,7 @@
 [![Build Status](https://travis-ci.org/jdupuy/LongestEdgeBisection2D.svg?branch=master)](https://travis-ci.org/jdupuy/LongestEdgeBisection2D)
 [![Build status](https://ci.appveyor.com/api/projects/status/mbfn80wcih0cmbds?svg=true)](https://ci.appveyor.com/project/jdupuy/longestedgebisection2d)
 
-This code allows to reproduce some of the results of my paper ["Concurrent Binary Trees (with application to Longest Edge Bisection)](https://onrendering.com/).
+This code allows to reproduce some of the results of my paper ["Concurrent Binary Trees (with application to Longest Edge Bisection)"](https://onrendering.com/).
 I provide two programs: subdivision, and terrain.
 
 ### Subdivision Program
