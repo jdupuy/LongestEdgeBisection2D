@@ -313,9 +313,21 @@ vec4 ShadeFragment(vec2 texCoord, vec3 worldPos, vec3 distance = vec3(0))
 #endif
 
 #if FLAG_DISPLACE
+#if 1
     // slope
     vec2 smap = texture(u_SmapSampler, texCoord).rg * u_DmapFactor * 0.03;
     vec3 n = normalize(vec3(-smap, 1));
+#else // compute the slope from the dmap directly
+    float filterSize = 1.0f / float(textureSize(u_DmapSampler, 0).x);// sqrt(dot(dFdx(texCoord), dFdy(texCoord)));
+    float sx0 = textureLod(u_DmapSampler, texCoord - vec2(filterSize, 0.0), 0.0).r;
+    float sx1 = textureLod(u_DmapSampler, texCoord + vec2(filterSize, 0.0), 0.0).r;
+    float sy0 = textureLod(u_DmapSampler, texCoord - vec2(0.0, filterSize), 0.0).r;
+    float sy1 = textureLod(u_DmapSampler, texCoord + vec2(0.0, filterSize), 0.0).r;
+    float sx = sx1 - sx0;
+    float sy = sy1 - sy0;
+
+    vec3 n = normalize(vec3(u_DmapFactor * 0.03 / filterSize * 0.5f * vec2(-sx, -sy), 1));
+#endif
 #else
     vec3 n = vec3(0, 0, 1);
 #endif
