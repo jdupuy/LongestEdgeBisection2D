@@ -824,7 +824,6 @@ bool LoadBatchProgram()
 {
     djg_program *djp = djgp_create();
     GLuint *glp = &g_gl.programs[PROGRAM_BATCH];
-    char buf[1024];
 
     LOG("Loading {Batch-Program}\n");
     if (GLAD_GL_ARB_shader_atomic_counter_ops) {
@@ -2210,7 +2209,6 @@ dja::mat4 cameraFrameMatrix()
 // -----------------------------------------------------------------------------
 void renderSky()
 {
-#if 1
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glCullFace(GL_FRONT);
@@ -2225,17 +2223,12 @@ void renderSky()
     glUniformMatrix4fv(g_gl.uniforms[UNIFORM_SKY_CAMERA_MATRIX], 1, GL_TRUE, &camera[0][0]);
     glUniform3f(g_gl.uniforms[UNIFORM_SKY_SUN_DIR], sunDir.x, sunDir.y, sunDir.z);
 
-    //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-
     glDrawElements(GL_TRIANGLES,
                    g_camera.sphere.triangleCount,
                    GL_UNSIGNED_SHORT,
                    0);
     glDisable(GL_DEPTH_TEST);
-    //glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    //glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
-#endif
 }
 
 // -----------------------------------------------------------------------------
@@ -2327,27 +2320,20 @@ void renderViewer()
         ImGui::Begin("Performance Analysis");
         {
             double cpuDt, gpuDt;
-            static double dispatchGpu = 0,
-                          subdivisionGpu = 0,
-                          sumReductionGpu = 0,
-                          renderGpu = 0;
 
             djgc_ticks(g_gl.clocks[CLOCK_ALL], &cpuDt, &gpuDt);
-            ImGui::Text("FPS %.3f(CPU) %.3f(GPU)", 1.f / cpuDt, 1.f / gpuDt);
+            ImGui::Text("FPS %8.3f(CPU) %8.3f(GPU)", 1.f / cpuDt, 1.f / gpuDt);
             ImGui::NewLine();
             ImGui::Text("Timings:");
             djgc_ticks(g_gl.clocks[CLOCK_UPDATE], &cpuDt, &gpuDt);
-            subdivisionGpu+= gpuDt;
-            ImGui::Text("Update    -- CPU: %.3f%s",
+            ImGui::Text("Subdivision -- CPU: %.3f%s",
                 cpuDt < 1. ? cpuDt * 1e3 : cpuDt,
                 cpuDt < 1. ? "ms" : " s");
             ImGui::SameLine();
             ImGui::Text("GPU: %.3f%s",
                 gpuDt < 1. ? gpuDt * 1e3 : gpuDt,
                 gpuDt < 1. ? "ms" : " s");
-            djgc_ticks(g_gl.clocks[CLOCK_REDUCTION], &cpuDt, &gpuDt);
-            sumReductionGpu+= gpuDt;
-            ImGui::Text("Reduction -- CPU: %.3f%s",
+            ImGui::Text("Reduction   -- CPU: %.3f%s",
                 cpuDt < 1. ? cpuDt * 1e3 : cpuDt,
                 cpuDt < 1. ? "ms" : " s");
             ImGui::SameLine();
@@ -2355,8 +2341,7 @@ void renderViewer()
                 gpuDt < 1. ? gpuDt * 1e3 : gpuDt,
                 gpuDt < 1. ? "ms" : " s");
             djgc_ticks(g_gl.clocks[CLOCK_BATCH], &cpuDt, &gpuDt);
-            dispatchGpu+= gpuDt;
-            ImGui::Text("Batcher   -- CPU: %.3f%s",
+            ImGui::Text("Dispatch    -- CPU: %.3f%s",
                 cpuDt < 1. ? cpuDt * 1e3 : cpuDt,
                 cpuDt < 1. ? "ms" : " s");
             ImGui::SameLine();
@@ -2364,9 +2349,8 @@ void renderViewer()
                 gpuDt < 1. ? gpuDt * 1e3 : gpuDt,
                 gpuDt < 1. ? "ms" : " s");
             djgc_ticks(g_gl.clocks[CLOCK_RENDER], &cpuDt, &gpuDt);
-            renderGpu+= gpuDt;
             if (g_terrain.method == METHOD_CS) {
-                ImGui::Text("Render    -- CPU: %.3f%s",
+                ImGui::Text("Render      -- CPU: %.3f%s",
                     cpuDt < 1. ? cpuDt * 1e3 : cpuDt,
                     cpuDt < 1. ? "ms" : " s");
                 ImGui::SameLine();
@@ -2374,7 +2358,7 @@ void renderViewer()
                     gpuDt < 1. ? gpuDt * 1e3 : gpuDt,
                     gpuDt < 1. ? "ms" : " s");
             } else {
-                ImGui::TextColored(ImVec4(0.5, 0.5, 0.5, 1.0), "Render    -- CPU: %.3f%s",
+                ImGui::TextColored(ImVec4(0.5, 0.5, 0.5, 1.0), "Render      -- CPU: %.3f%s",
                     cpuDt < 1. ? cpuDt * 1e3 : cpuDt,
                     cpuDt < 1. ? "ms" : " s");
                 ImGui::SameLine();
@@ -2383,7 +2367,7 @@ void renderViewer()
                     gpuDt < 1. ? "ms" : " s");
             }
             djgc_ticks(g_gl.clocks[CLOCK_ALL], &cpuDt, &gpuDt);
-            ImGui::Text("All       -- CPU: %.3f%s",
+            ImGui::Text("All         -- CPU: %.3f%s",
                 cpuDt < 1. ? cpuDt * 1e3 : cpuDt,
                 cpuDt < 1. ? "ms" : " s");
             ImGui::SameLine();
