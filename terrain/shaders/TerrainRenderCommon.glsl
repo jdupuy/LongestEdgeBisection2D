@@ -302,7 +302,11 @@ ClipSpaceAttribute TessellateClipSpaceTriangle(
  *
  */
 #ifdef FRAGMENT_SHADER
-vec4 ShadeFragment(vec2 texCoord, vec3 worldPos, vec3 distance = vec3(0))
+#if FLAG_WIRE
+vec4 ShadeFragment(vec2 texCoord, vec3 worldPos, vec3 distance)
+#else
+vec4 ShadeFragment(vec2 texCoord, vec3 worldPos)
+#endif
 {
 #if FLAG_WIRE
     const float wireScale = 1.1; // scale of the wire in pixel
