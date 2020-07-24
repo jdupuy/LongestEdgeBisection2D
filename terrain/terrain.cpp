@@ -2333,6 +2333,7 @@ void renderViewer()
             ImGui::Text("GPU: %.3f%s",
                 gpuDt < 1. ? gpuDt * 1e3 : gpuDt,
                 gpuDt < 1. ? "ms" : " s");
+                djgc_ticks(g_gl.clocks[CLOCK_REDUCTION], &cpuDt, &gpuDt);
             ImGui::Text("Reduction   -- CPU: %.3f%s",
                 cpuDt < 1. ? cpuDt * 1e3 : cpuDt,
                 cpuDt < 1. ? "ms" : " s");
