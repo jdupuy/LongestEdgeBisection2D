@@ -121,15 +121,15 @@ void main()
     );
 
     // compute final vertex attributes
-    ClipSpaceAttribute attrib = TessellateClipSpaceTriangle(
+    VertexAttribute attrib = TessellateTriangle(
         triangleTexCoords,
         gl_TessCoord.xy
     );
 
     // set varyings
-    gl_Position = u_ViewProjectionMatrix * attrib.position;
+    gl_Position = u_ModelViewProjectionMatrix * attrib.position;
     o_TexCoord  = attrib.texCoord;
-    o_WorldPos  = attrib.position.xyz;
+    o_WorldPos  = (u_ModelMatrix * attrib.position).xyz;
 }
 #endif
 

@@ -200,10 +200,6 @@ bool FrustumCullingTest(in const vec4[3] patchVertices)
 {
     vec3 bmin = min(min(patchVertices[0].xyz, patchVertices[1].xyz), patchVertices[2].xyz);
     vec3 bmax = max(max(patchVertices[0].xyz, patchVertices[1].xyz), patchVertices[2].xyz);
-#   if FLAG_DISPLACE
-    bmin.z = 0.0;
-    bmax.z = u_DmapFactor;
-#   endif
 
     return FrustumCullingTest(u_FrustumPlanes, bmin, bmax);
 }
@@ -255,45 +251,23 @@ vec4 BarycentricInterpolation(in vec4 v[3], in vec2 u)
  * GenerateVertex -- Computes the final vertex position
  *
  */
-struct ClipSpaceAttribute {
+struct VertexAttribute {
     vec4 position;
     vec2 texCoord;
 };
 
-ClipSpaceAttribute TessellateClipSpaceTriangle(
-    in const vec4 vertexPositions[3],
-    in const vec2 vertexTexCoords[3],
-    in vec2 tessellationCoordinate
+VertexAttribute TessellateTriangle(
+    in const vec2 texCoords[3],
+    in vec2 tessCoord
 ) {
-    // compute final attributes
-    vec4 position = BarycentricInterpolation(vertexPositions, tessellationCoordinate);
-    vec2 texCoord = BarycentricInterpolation(vertexTexCoords, tessellationCoordinate);
-
-#if FLAG_DISPLACE
-    // displace the surface in clip space
-    vec4 upDir = u_ModelViewProjectionMatrix[2];
-    float z = u_DmapFactor * textureLod(u_DmapSampler, texCoord, 0.0).r;
-
-    position+= upDir * z;
-#endif
-
-    return ClipSpaceAttribute(position, texCoord);
-}
-
-ClipSpaceAttribute TessellateClipSpaceTriangle(
-    in const vec2 vertexTexCoords[3],
-    in vec2 tessellationCoordinate
-) {
-    // compute final attributes
-    vec2 texCoord = BarycentricInterpolation(vertexTexCoords, tessellationCoordinate);
+    vec2 texCoord = BarycentricInterpolation(texCoords, tessCoord);
     vec4 position = vec4(texCoord, 0, 1);
 
 #if FLAG_DISPLACE
-    float z = u_DmapFactor * textureLod(u_DmapSampler, texCoord, 0.0).r;
-    position.z = z;
+    position.z = u_DmapFactor * textureLod(u_DmapSampler, texCoord, 0.0).r;
 #endif
 
-    return ClipSpaceAttribute(u_ModelMatrix * position, texCoord);
+    return VertexAttribute(position, texCoord);
 }
 
 

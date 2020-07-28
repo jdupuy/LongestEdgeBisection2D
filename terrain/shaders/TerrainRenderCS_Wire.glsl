@@ -30,7 +30,7 @@ void main()
     );
 
     // compute final vertex attributes
-    ClipSpaceAttribute attrib = TessellateClipSpaceTriangle(
+    VertexAttribute attrib = TessellateTriangle(
         triangleTexCoords,
         i_VertexPos
     );
@@ -42,10 +42,10 @@ void main()
     screenPos.xy*= 1.0f * vec2(1.0f, 1920.0f / 720.0f);
     gl_Position = vec4(screenPos, 1.0);
 #else
-    gl_Position = u_ViewProjectionMatrix * attrib.position;
+    gl_Position = u_ModelViewProjectionMatrix * attrib.position;
 #endif
     o_TexCoord  = attrib.texCoord;
-    o_WorldPos = attrib.position.xyz;
+    o_WorldPos  = (u_ModelMatrix * attrib.position).xyz;
 }
 #endif
 

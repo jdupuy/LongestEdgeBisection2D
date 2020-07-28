@@ -25,7 +25,7 @@ void main()
 #ifdef TESS_CONTROL_SHADER
 layout (vertices = 1) out;
 out PatchData {
-    vec4 packedData[4];
+    vec2 texCoords[3];
 } o_Patch[];
 
 
@@ -67,11 +67,10 @@ void main()
     if (true) {
 #endif
         // set output data
-        o_Patch[gl_InvocationID].packedData  = vec4[4](
-            u_ModelViewProjectionMatrix * vec4(triangleVertices[0].xy, 0.0f, 1.0f),
-            u_ModelViewProjectionMatrix * vec4(triangleVertices[1].xy, 0.0f, 1.0f),
-            u_ModelViewProjectionMatrix * vec4(triangleVertices[2].xy, 0.0f, 1.0f),
-            vec4(triangleVertices[0].xy, triangleVertices[1].xy)
+        o_Patch[gl_InvocationID].texCoords  = vec2[3](
+            triangleVertices[0].xy,
+            triangleVertices[1].xy,
+            triangleVertices[2].xy
         );
 
         // set tess levels
@@ -98,7 +97,7 @@ void main()
 #ifdef TESS_EVALUATION_SHADER
 layout (triangles, ccw, equal_spacing) in;
 in PatchData {
-    vec4 packedData[4];
+    vec2 texCoords[3];
 } i_Patch[];
 
 layout(location = 0) out vec2 o_TexCoord;
@@ -106,29 +105,16 @@ layout(location = 1) out vec3 o_WorldPos;
 
 void main()
 {
-    // unpack triangle attributes
-    vec4 trianglePositions[3] = vec4[3](
-        i_Patch[0].packedData[0],
-        i_Patch[0].packedData[1],
-        i_Patch[0].packedData[2]
-    );
-    vec2 tmp = i_Patch[0].packedData[3].xy - i_Patch[0].packedData[3].zw;
-    vec2 triangleTexCoords[3] = vec2[3](
-        i_Patch[0].packedData[3].xy,
-        i_Patch[0].packedData[3].zw,
-        i_Patch[0].packedData[3].zw + vec2(tmp.y, -tmp.x)
-    );
-
     // compute final vertex attributes
-    ClipSpaceAttribute attrib = TessellateClipSpaceTriangle(
-        triangleTexCoords,
+    VertexAttribute attrib = TessellateTriangle(
+        i_Patch[0].texCoords,
         gl_TessCoord.xy
     );
 
     // set varyings
-    gl_Position = u_ViewProjectionMatrix * attrib.position;
+    gl_Position = u_ModelViewProjectionMatrix * attrib.position;
     o_TexCoord  = attrib.texCoord;
-    o_WorldPos  = attrib.position.xyz;
+    o_WorldPos  = (u_ModelMatrix * attrib.position).xyz;
 }
 #endif
 

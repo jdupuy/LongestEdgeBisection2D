@@ -53,15 +53,15 @@ GenerateVertex(
     in vec2 tessCoord
 ) {
     // compute final vertex attributes
-    ClipSpaceAttribute attrib = TessellateClipSpaceTriangle(
+    VertexAttribute attrib = TessellateTriangle(
         triangleTexCoords,
         tessCoord
     );
 
     // set varyings and emit vertex
-    o_WorldPos  = attrib.position.xyz;
+    o_WorldPos  = (u_ModelMatrix * attrib.position).xyz;
     o_TexCoord  = attrib.texCoord;
-    gl_Position = u_ViewProjectionMatrix * attrib.position;
+    gl_Position = u_ModelViewProjectionMatrix * attrib.position;
     EmitVertex();
 }
 

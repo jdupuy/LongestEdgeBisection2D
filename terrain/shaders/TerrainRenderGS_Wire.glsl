@@ -51,13 +51,13 @@ vec2[3] DecodeTriangleTexCoords(in const cbt_Node node)
 }
 
 void EmitTriangle(
-    inout ClipSpaceAttribute v0,
-    inout ClipSpaceAttribute v1,
-    inout ClipSpaceAttribute v2
+    inout VertexAttribute v0,
+    inout VertexAttribute v1,
+    inout VertexAttribute v2
 ) {
-    vec4 c0 = u_ViewProjectionMatrix * v0.position;
-    vec4 c1 = u_ViewProjectionMatrix * v1.position;
-    vec4 c2 = u_ViewProjectionMatrix * v2.position;
+    vec4 c0 = u_ModelViewProjectionMatrix * v0.position;
+    vec4 c1 = u_ModelViewProjectionMatrix * v1.position;
+    vec4 c2 = u_ModelViewProjectionMatrix * v2.position;
     vec2 p0 = u_ScreenResolution * c0.xy / c0.w;
     vec2 p1 = u_ScreenResolution * c1.xy / c1.w;
     vec2 p2 = u_ScreenResolution * c2.xy / c2.w;
@@ -68,19 +68,19 @@ void EmitTriangle(
 
     gl_Position = c0;
     o_TexCoord  = v0.texCoord;
-    o_WorldPos = v0.position.xyz;
+    o_WorldPos  = (u_ModelMatrix * v0.position).xyz;
     o_Distance = vec3(area / length(u0), 0, 0);
     EmitVertex();
 
     gl_Position = c1;
     o_TexCoord  = v1.texCoord;
-    o_WorldPos = v1.position.xyz;
+    o_WorldPos  = (u_ModelMatrix * v1.position).xyz;
     o_Distance = vec3(0, area / length(u1), 0);
     EmitVertex();
 
     gl_Position = c2;
     o_TexCoord  = v2.texCoord;
-    o_WorldPos = v2.position.xyz;
+    o_WorldPos  = (u_ModelMatrix * v2.position).xyz;
     o_Distance = vec3(0, 0, area / length(u2));
     EmitVertex();
 
@@ -138,15 +138,15 @@ void main()
             only one triangle.
         */
 #if TERRAIN_PATCH_SUBD_LEVEL == 0
-        ClipSpaceAttribute v0 = TessellateClipSpaceTriangle(
+        VertexAttribute v0 = TessellateTriangle(
             triangleTexCoords,
             vec2(0, 1)
         );
-        ClipSpaceAttribute v1 = TessellateClipSpaceTriangle(
+        VertexAttribute v1 = TessellateTriangle(
             triangleTexCoords,
             vec2(0, 0)
         );
-        ClipSpaceAttribute v2 = TessellateClipSpaceTriangle(
+        VertexAttribute v2 = TessellateTriangle(
             triangleTexCoords,
             vec2(1, 0)
         );
@@ -159,19 +159,19 @@ void main()
         for (uint nodeID = minNodeID; nodeID < maxNodeID; ++nodeID) {
             cbt_Node node = cbt_CreateNode(nodeID, nodeDepth);
             vec2 tessCoords[3] = DecodeTriangleTexCoords(node);
-            ClipSpaceAttribute v0 = TessellateClipSpaceTriangle(
+            VertexAttribute v0 = TessellateTriangle(
                 triangleTexCoords,
                 tessCoords[2]
             );
-            ClipSpaceAttribute v1 = TessellateClipSpaceTriangle(
+            VertexAttribute v1 = TessellateTriangle(
                 triangleTexCoords,
                 tessCoords[1]
             );
-            ClipSpaceAttribute v2 = TessellateClipSpaceTriangle(
+            VertexAttribute v2 = TessellateTriangle(
                 triangleTexCoords,
                 (tessCoords[0] + tessCoords[2]) / 2.0f
             );
-            ClipSpaceAttribute v3 = TessellateClipSpaceTriangle(
+            VertexAttribute v3 = TessellateTriangle(
                 triangleTexCoords,
                 tessCoords[0]
             );
