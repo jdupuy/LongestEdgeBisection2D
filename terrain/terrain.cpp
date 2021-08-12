@@ -2390,6 +2390,22 @@ void renderScene()
 
 
 // -----------------------------------------------------------------------------
+
+void PrintLargeNumber(const char *label, int32_t value)
+{
+    const int32_t M = value / 1000000;
+    const int32_t K = (value - M * 1000000) / 1000;
+    const int32_t r = value - M * 1000000 - K * 1000;
+
+    if (value >= 1000000) {
+        ImGui::Text("%s: %i,%03i,%03i", label, M, K, r);
+    } else if (value >= 1000) {
+        ImGui::Text("%s: %i,%03i", label, K, r);
+    } else {
+        ImGui::Text("%s: %i", label, value);
+    }
+}
+
 void renderViewer()
 {
     // render framebuffer
@@ -2620,7 +2636,7 @@ void renderViewer()
                 LoadBuffers();
                 LoadPrograms();
             }
-            ImGui::Text("CBT nodes: %i", g_terrain.nodeCount);
+            PrintLargeNumber("CBT nodes", g_terrain.nodeCount);
             {
                 uint32_t bufSize = cbt__HeapByteSize(g_terrain.maxDepth);
 
