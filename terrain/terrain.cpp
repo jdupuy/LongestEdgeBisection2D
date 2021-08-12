@@ -136,6 +136,7 @@ struct TerrainManager {
     float primitivePixelLengthTarget;
     float minLodStdev;
     int maxDepth;
+    uint32_t nodeCount;
     float size;
 } g_terrain = {
     {true, true, false, false, true},
@@ -148,6 +149,7 @@ struct TerrainManager {
     7.0f,
     0.1f,
     25,
+    0,
     52660.0f
 };
 
@@ -241,6 +243,7 @@ enum {
     BUFFER_TERRAIN_DISPATCH_CS, // compute shader path only
     BUFFER_SPHERE_VERTICES,
     BUFFER_SPHERE_INDEXES,
+    BUFFER_CBT_NODE_COUNT,
 
     BUFFER_COUNT
 };
@@ -267,8 +270,14 @@ enum {
     PROGRAM_LEB_REDUCTION_PREPASS,
     PROGRAM_BATCH,
     PROGRAM_SKY,
+    PROGRAM_CBT_NODE_COUNT,
 
     PROGRAM_COUNT
+};
+enum {
+    QUERY_NODE_COUNT,
+
+    QUERY_COUNT
 };
 enum {
     UNIFORM_VIEWER_FRAMEBUFFER_SAMPLER,
@@ -344,6 +353,7 @@ struct OpenGLManager {
     GLuint textures[TEXTURE_COUNT];
     GLuint vertexArrays[VERTEXARRAY_COUNT];
     GLuint buffers[BUFFER_COUNT];
+    GLuint queries[QUERY_COUNT];
     GLint uniforms[UNIFORM_COUNT];
     djg_buffer *streams[STREAM_COUNT];
     djg_clock *clocks[CLOCK_COUNT];
@@ -958,6 +968,36 @@ bool LoadSkyProgram()
     return (glGetError() == GL_NO_ERROR);
 }
 
+
+// -----------------------------------------------------------------------------
+/**
+ * Load the Node Count Program
+ *
+ * This program is responsible for retrieving the number of nodes in the CBT
+ */
+bool LoadCbtNodeCountProgram()
+{
+    djg_program *djp = djgp_create();
+    GLuint *glp = &g_gl.programs[PROGRAM_CBT_NODE_COUNT];
+
+    LOG("Loading {Cbt-Node-Count-Program}\n");
+    djgp_push_string(djp, "#define CBT_NODE_COUNT_BUFFER_BINDING %i\n", BUFFER_CBT_NODE_COUNT);
+    djgp_push_string(djp, "#define CBT_HEAP_BUFFER_BINDING %i\n", BUFFER_LEB);
+    djgp_push_string(djp, "#define CBT_READ_ONLY\n");
+    djgp_push_file(djp, PATH_TO_SRC_DIRECTORY "./submodules/libcbt/glsl/cbt.glsl");
+    djgp_push_file(djp, PATH_TO_SRC_DIRECTORY "./terrain/shaders/NodeCount.glsl");
+    djgp_push_string(djp, "#ifdef COMPUTE_SHADER\n#endif\n");
+    if (!djgp_to_gl(djp, 450, false, true, glp)) {
+        djgp_release(djp);
+
+        return false;
+    }
+    djgp_release(djp);
+
+    return (glGetError() == GL_NO_ERROR);
+}
+
+
 // -----------------------------------------------------------------------------
 /**
  * Load All Programs
@@ -974,6 +1014,7 @@ bool LoadPrograms()
     if (v) v &= LoadBatchProgram();
     if (v) v &= LoadTopViewProgram();
     if (v) v &= LoadSkyProgram();
+    if (v) v &= LoadCbtNodeCountProgram();
 
     return v;
 }
@@ -1452,6 +1493,32 @@ bool LoadLebBuffer()
     return (glGetError() == GL_NO_ERROR);
 }
 
+
+// -----------------------------------------------------------------------------
+/**
+ * Load CBT Node Count Buffer
+ *
+ * This procedure initializes a buffer that stores the number of nodes in the CBT.
+ */
+bool LoadCbtNodeCountBuffer()
+{
+    LOG("Loading {Cbt-Node-Count-Buffer}\n");
+    if (glIsBuffer(g_gl.buffers[BUFFER_CBT_NODE_COUNT]))
+        glDeleteBuffers(1, &g_gl.buffers[BUFFER_CBT_NODE_COUNT]);
+    glGenBuffers(1, &g_gl.buffers[BUFFER_CBT_NODE_COUNT]);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, g_gl.buffers[BUFFER_CBT_NODE_COUNT]);
+    glBufferStorage(GL_SHADER_STORAGE_BUFFER,
+                    sizeof(int32_t),
+                    NULL,
+                    GL_MAP_READ_BIT);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
+                     BUFFER_CBT_NODE_COUNT,
+                     g_gl.buffers[BUFFER_CBT_NODE_COUNT]);
+
+    return (glGetError() == GL_NO_ERROR);
+}
+
+
 // -----------------------------------------------------------------------------
 /**
  * Load the indirect command buffer
@@ -1632,6 +1699,7 @@ bool LoadBuffers()
     if (v) v &= LoadRenderCmdBuffer();
     if (v) v &= LoadMeshletBuffers();
     if (v) v &= LoadSphereBuffers();
+    if (v) v &= LoadCbtNodeCountBuffer();
 
     return v;
 }
@@ -1722,6 +1790,38 @@ bool LoadVertexArrays()
     return v;
 }
 
+
+// -----------------------------------------------------------------------------
+/**
+ * Load Node Count Query
+ *
+ */
+bool LoadNodeCountQuery()
+{
+    GLuint *query = &g_gl.queries[QUERY_NODE_COUNT];
+
+    glGenQueries(1, query);
+    glQueryCounter(*query, GL_TIMESTAMP);
+
+    return glGetError() == GL_NO_ERROR;
+}
+
+
+// -----------------------------------------------------------------------------
+/**
+ * Load All Queries
+ *
+ */
+bool LoadQueries()
+{
+    bool success = true;
+
+    if (success) success = LoadNodeCountQuery();
+
+    return success;
+}
+
+
 // -----------------------------------------------------------------------------
 /**
  * Load the Scene Framebuffer
@@ -1811,6 +1911,8 @@ void init()
     if (v) v &= LoadFramebuffers();
     if (v) v &= LoadVertexArrays();
     if (v) v &= LoadPrograms();
+    if (v) v &= LoadQueries();
+
 
     updateCameraMatrix();
 
@@ -1842,6 +1944,9 @@ void release()
     for (i = 0; i < VERTEXARRAY_COUNT; ++i)
         if (glIsVertexArray(g_gl.vertexArrays[i]))
             glDeleteVertexArrays(1, &g_gl.vertexArrays[i]);
+    for (i = 0; i < QUERY_COUNT; ++i)
+        if (glIsQuery(g_gl.queries[i]))
+            glDeleteQueries(1, &g_gl.queries[i]);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2231,6 +2336,45 @@ void renderSky()
     glCullFace(GL_BACK);
 }
 
+
+// -----------------------------------------------------------------------------
+/**
+ * Retrieve Node Count
+ *
+ * Retrieves the number of nodes in the CBT asynchronously.
+ */
+void RetrieveNodeCount()
+{
+    static GLint isReady = GL_FALSE;
+    const GLuint *query = &g_gl.queries[QUERY_NODE_COUNT];
+
+    glGetQueryObjectiv(*query, GL_QUERY_RESULT_AVAILABLE, &isReady);
+
+    if (isReady) {
+        GLuint *buffer = &g_gl.buffers[BUFFER_CBT_NODE_COUNT];
+
+        g_terrain.nodeCount = *(uint32_t *)
+            glMapNamedBuffer(*buffer, GL_READ_ONLY | GL_MAP_UNSYNCHRONIZED_BIT);
+        glUnmapNamedBuffer(g_gl.buffers[BUFFER_CBT_NODE_COUNT]);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
+                         BUFFER_CBT_NODE_COUNT,
+                         g_gl.buffers[BUFFER_CBT_NODE_COUNT]);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
+                         BUFFER_LEB,
+                         g_gl.buffers[BUFFER_LEB]);
+        glUseProgram(g_gl.programs[PROGRAM_CBT_NODE_COUNT]);
+        glDispatchCompute(1, 1, 1);
+        glMemoryBarrier(GL_ALL_BARRIER_BITS);
+        glQueryCounter(*query, GL_TIMESTAMP);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
+                         BUFFER_CBT_NODE_COUNT,
+                         0);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER,
+                         BUFFER_LEB,
+                         0);
+    }
+}
+
 // -----------------------------------------------------------------------------
 /**
  * Render Scene
@@ -2240,8 +2384,10 @@ void renderSky()
 void renderScene()
 {
     renderTerrain();
+    RetrieveNodeCount();
     renderSky();
 }
+
 
 // -----------------------------------------------------------------------------
 void renderViewer()
@@ -2474,6 +2620,7 @@ void renderViewer()
                 LoadBuffers();
                 LoadPrograms();
             }
+            ImGui::Text("CBT nodes: %i", g_terrain.nodeCount);
             {
                 uint32_t bufSize = cbt__HeapByteSize(g_terrain.maxDepth);
 
