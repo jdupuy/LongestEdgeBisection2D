@@ -4,7 +4,7 @@
 [![Build status](https://ci.appveyor.com/api/projects/status/mbfn80wcih0cmbds?svg=true)](https://ci.appveyor.com/project/jdupuy/longestedgebisection2d)
 
 This code allows to reproduce some of the results of my paper ["Concurrent Binary Trees (with application to Longest Edge Bisection)"](https://onrendering.com/).
-I provide two programs: subdivision, and terrain.
+I provide three programs: subdivision, terrain, and catmullclark.
 
 ### Subdivision Program
 This program provides a basic example to set-up the CBT and LEB library to compute adaptive longest edge bisections in parallel either on the CPU or GPU. The parallel computations are carried out by OpenMP on the CPU, and GLSL on the GPU. Below is a preview of the program.
