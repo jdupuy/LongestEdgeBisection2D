@@ -32,6 +32,7 @@ include_directories(submodules/dj_algebra)
 include_directories(submodules/dj_opengl)
 include_directories(submodules/libcbt)
 include_directories(submodules/libleb)
+include_directories(submodules/HalfedgeCatmullClark)
 
 # imgui source files
 set(IMGUI_SRC_DIR submodules/imgui)
@@ -62,6 +63,21 @@ unset(DEMO)
 # ------------------------------------------------------------------------------
 set(DEMO terrain)
 set(SRC_DIR terrain)
+include_directories(${SRC_DIR})
+aux_source_directory(${SRC_DIR} SRC_FILES)
+add_executable(${DEMO} ${IMGUI_SRC_FILES} ${SRC_FILES} ${SRC_DIR}/glad/glad.c)
+target_link_libraries(${DEMO} glfw)
+target_compile_definitions(
+    ${DEMO} PUBLIC
+    -DPATH_TO_SRC_DIRECTORY="${CMAKE_SOURCE_DIR}/"
+    -DIMGUI_IMPL_OPENGL_LOADER_GLAD
+)
+unset(SRC_FILES)
+unset(DEMO)
+
+# ------------------------------------------------------------------------------
+set(DEMO catmullclark)
+set(SRC_DIR catmullclark)
 include_directories(${SRC_DIR})
 aux_source_directory(${SRC_DIR} SRC_FILES)
 add_executable(${DEMO} ${IMGUI_SRC_FILES} ${SRC_FILES} ${SRC_DIR}/glad/glad.c)

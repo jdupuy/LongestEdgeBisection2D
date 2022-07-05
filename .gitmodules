@@ -16,3 +16,6 @@
 [submodule "submodules/stb"]
 	path = submodules/stb
 	url = https://github.com/nothings/stb.git
+[submodule "submodules/HalfedgeCatmullClark"]
+	path = submodules/HalfedgeCatmullClark
+	url = https://github.com/jdupuy/HalfedgeCatmullClark.git
