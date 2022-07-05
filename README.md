@@ -14,6 +14,10 @@ This program provides a basic example to set-up the CBT and LEB library to compu
 This program provides a terrain renderer based on the adaptive longest edge bisection. The terrain geometry is computed and updated in parallel on the GPU using GLSL shaders. Below is a preview of the program.
 ![alt text](assets/preview-terrain.png "the terrain program")
 
+### Catmull-Clark Program
+This program provides adaptive tessellation for Catmull Clark subdivision surfaces. The entire geometry is computed and updated in parallel on the GPU using GLSL shaders. Below is a preview of the program.
+![alt text](assets/preview-catmullclark.png "the catmullclark program")
+
 ### License
 
 Apart from the submodule folder, the code from this repository is released in public domain. You can do anything you want with them. You have no legal obligation to do anything else, although I appreciate attribution.
