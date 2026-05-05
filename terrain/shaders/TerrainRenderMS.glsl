@@ -33,15 +33,16 @@ taskNV out Patch{
 
 void main()
 {
+	const int cbtID = 0;
     uint nodeID = gl_GlobalInvocationID.x;
     bool isVisible = false;
     vec4 triangleVertices[3];
-    leb_Node node;
+    cbt_Node node;
 
-    if (nodeID < leb_NodeCount()) {
+    if (nodeID < cbt_NodeCount(cbtID)) {
         // get threadID (each triangle is associated to a thread)
         // and extract triangle vertices
-        node = leb_DecodeNode(nodeID);
+        node = cbt_DecodeNode(cbtID, nodeID);
         triangleVertices = DecodeTriangleVertices(node);
 
         // compute target LoD
@@ -50,18 +51,18 @@ void main()
         // splitting pass
 #if FLAG_SPLIT
         if (targetLod.x > 1.0)
-            leb_SplitNodeConforming(node);
+            leb_SplitNode(cbtID, node);
 #endif
 
         // merging pass
 #if FLAG_MERGE
         if (true) {
-            leb_NodeDiamond diamond = leb_DecodeNodeDiamond(node);
+            leb_DiamondParent diamond = leb_DecodeDiamondParent(node);
             bool shouldMergeBase = LevelOfDetail(DecodeTriangleVertices(diamond.base)).x < 1.0;
             bool shouldMergeTop = LevelOfDetail(DecodeTriangleVertices(diamond.top)).x < 1.0;
 
             if (shouldMergeBase && shouldMergeTop)
-                leb_MergeNodeConforming(node, diamond);
+                leb_MergeNode(cbtID, node, diamond);
         }
 #endif
 
@@ -76,14 +77,10 @@ void main()
         uint patchID = 4u * bitCount(voteVisible & gl_ThreadLtMaskNV);
 
         // set output data
-        o_Patch.packedData[patchID    ] =
-            u_ModelViewProjectionMatrix * vec4(triangleVertices[0].xy, 0.0f, 1.0f);
-        o_Patch.packedData[patchID + 1] =
-            u_ModelViewProjectionMatrix * vec4(triangleVertices[1].xy, 0.0f, 1.0f);
-        o_Patch.packedData[patchID + 2] =
-            u_ModelViewProjectionMatrix * vec4(triangleVertices[2].xy, 0.0f, 1.0f);
-        o_Patch.packedData[patchID + 3] =
-            vec4(triangleVertices[0].xy, triangleVertices[1].xy);
+        o_Patch.packedData[patchID    ] = u_ModelViewProjectionMatrix * vec4(triangleVertices[0].xy, 0.0f, 1.0f);
+        o_Patch.packedData[patchID + 1] = u_ModelViewProjectionMatrix * vec4(triangleVertices[1].xy, 0.0f, 1.0f);
+        o_Patch.packedData[patchID + 2] = u_ModelViewProjectionMatrix * vec4(triangleVertices[2].xy, 0.0f, 1.0f);
+        o_Patch.packedData[patchID + 3] =                               vec4(triangleVertices[0].xy, triangleVertices[1].xy);
 
         // reverse triangle winding depending on the subdivision level
         if ((node.depth & 1) == 0) {
@@ -91,7 +88,7 @@ void main()
 
             o_Patch.packedData[patchID] = o_Patch.packedData[patchID + 2];
             o_Patch.packedData[patchID + 2] = tmp;
-            o_Patch.packedData[patchID + 3].xy = triangleVertices[2].xy;
+            o_Patch.packedData[patchID + 3].xy = triangleVertices[0].xy;
         }
     }
 
@@ -112,7 +109,7 @@ void main()
  */
 #ifdef MESH_SHADER
 layout(local_size_x = THREAD_COUNT) in;
-layout(max_vertices = MAX_VERTICES, max_primitives = MAX_PRIMITIVES) out;
+layout(max_vertices = 64, max_primitives = 126) out;
 layout(triangles) out;
 
 taskNV in Patch{
@@ -121,7 +118,7 @@ taskNV in Patch{
 
 out FragmentData {
     vec2 texCoord;
-    vec2 slope;
+    vec3 worldPos;
 } o_FragmentData[];
 
 int EdgeVertexCount()
@@ -138,6 +135,36 @@ int VertexCount()
 {
     return (EdgeVertexCount() * (EdgeVertexCount() + 1)) / 2;
 }
+
+
+
+
+
+struct ClipSpaceAttribute {
+    vec4 position;
+    vec2 texCoord;
+};
+
+ClipSpaceAttribute TessellateClipSpaceTriangle(
+    in const vec4 vertexPositions[3],
+    in const vec2 vertexTexCoords[3],
+    in vec2 tessellationCoordinate
+) {
+    // compute final attributes
+    vec4 position = BarycentricInterpolation(vertexPositions, tessellationCoordinate);
+    vec2 texCoord = BarycentricInterpolation(vertexTexCoords, tessellationCoordinate);
+
+#if FLAG_DISPLACE
+    // displace the surface in clip space
+    vec4 upDir = u_ModelViewProjectionMatrix[2];
+    float z = u_DmapFactor * textureLod(u_DmapSampler, texCoord, 0.0).r;
+
+    position+= upDir * z;
+#endif
+
+    return ClipSpaceAttribute(position, texCoord);
+}
+
 
 
 void main()
@@ -166,8 +193,7 @@ void main()
     for (int i = 0; i < 3; ++i) {
         int vertexID = i;
         // compute final vertex attributes
-        ClipSpaceAttribute attrib = TessellateClipSpaceTriangle(
-            trianglePositions,
+        VertexAttribute attrib = TessellateTriangle(
             triangleTexCoords,
             tessCoords[i]
         );
@@ -175,7 +201,7 @@ void main()
         // set outputs
         o_FragmentData[vertexID].texCoord = attrib.texCoord;
         o_FragmentData[vertexID].slope    = attrib.slope;
-        gl_MeshVerticesNV[vertexID].gl_Position = attrib.position;
+        gl_MeshVerticesNV[vertexID].gl_Position =  * attrib.position;
 
         for (int j = 0; j < 6; ++j)
             gl_MeshVerticesNV[vertexID].gl_ClipDistance[j] = 1.0f;
@@ -198,17 +224,22 @@ void main()
             uint vertexID = i * (i + 1) / 2 + j;
             vec2 tessCoord = vec2(j, edgeCount - i) / float(edgeCount);
 
-            // compute final vertex attributes
-            ClipSpaceAttribute attrib = TessellateClipSpaceTriangle(
-                trianglePositions,
-                triangleTexCoords,
-                tessCoord
-            );
+            //// compute final vertex attributes
+            //ClipSpaceAttribute attrib = TessellateClipSpaceTriangle(
+            //    trianglePositions,
+            //    triangleTexCoords,
+            //    tessCoord
+            //);
+			
+			        VertexAttribute attrib = TessellateTriangle(
+            triangleTexCoords,
+            tessCoord
+        );
 
             // set outputs
             o_FragmentData[vertexID].texCoord = attrib.texCoord;
-            o_FragmentData[vertexID].slope    = attrib.slope;
-            gl_MeshVerticesNV[vertexID].gl_Position = attrib.position;
+            o_FragmentData[vertexID].worldPos    = (u_ModelMatrix * attrib.position).xyz;
+            gl_MeshVerticesNV[vertexID].gl_Position = u_ModelViewProjectionMatrix * attrib.position;
 
             for (int j = 0; j < 6; ++j)
                 gl_MeshVerticesNV[vertexID].gl_ClipDistance[j] = 1.0f;
@@ -246,13 +277,13 @@ void main()
 #ifdef FRAGMENT_SHADER
 in FragmentData {
     vec2 texCoord;
-    vec2 slope;
+    vec3 worldPos;
 } i_FragmentData;
 
 layout(location = 0) out vec4 o_FragColor;
 
 void main()
 {
-    o_FragColor = ShadeFragment(i_FragmentData.texCoord, i_FragmentData.slope);
+    o_FragColor = ShadeFragment(i_FragmentData.texCoord, i_FragmentData.worldPos);
 }
 #endif
